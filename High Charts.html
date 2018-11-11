@@ -1,0 +1,369 @@
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Highcharts CA</title>
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+    <script src="http://code.highcharts.com/highcharts.js"></script>
+    <script src="http://code.highcharts.com/highcharts-more.js"></script>
+    <script src="http://code.highcharts.com/highcharts-3d.js"></script>
+    <script src="https://code.highcharts.com/modules/exporting.js"></script>
+    <script src="http://dweet.io/client/dweet.io.min.js"></script>
+</head>
+
+<body>
+<div id="device" style="width: auto; height: auto; margin: 0 auto; text-align: center"></div>
+<div id="temperatureContainer" style="width: auto; height: 400px; margin: 0 auto"></div>
+<div id="humidityContainer" style="width: auto; height: 400px; margin: 0 auto"></div>
+<div id="sliders" style="width: auto; height: auto; margin-left: 10%">
+    <table>
+        <tr>
+            <td>Alpha Angle</td>
+            <td><input id="alpha" type="range" min="0" max="45" value="45"/> <span id="alpha-value" class="value"></span></td>
+        </tr>
+        <tr>
+            <td>Beta Angle</td>
+            <td><input id="beta" type="range" min="-45" max="45" value="0"/> <span id="beta-value" class="value"></span></td>
+        </tr>
+        <tr>
+            <td>Depth</td>
+            <td><input id="depth" type="range" min="20" max="100" value="100"/> <span id="depth-value" class="value"></span></td>
+        </tr>
+    </table>
+</div>
+<div id="buttonPressedContainer" style="width: 40%; height: 400px; margin: 0 auto"></div>
+
+<script language="JavaScript">
+    var dataTemp = [];
+    var dataHum = [];
+    var trueValue = 0;
+    var falseValue = 0;
+
+    array_for_temp = [];
+    array_for_hum = [];
+
+    $(document).ready(function () {
+        //localStorage.clear()
+
+        var name = 'get_your_own_thing';
+
+        var splineChart = {
+            type: 'spline',
+            animation: Highcharts.svg, // don't animate in IE < IE 10.
+            marginRight: 10
+        };
+
+        var pieChart = {
+            type: 'pie',
+            plotBackgroundColor: null,
+            plotBorderWidth: null,
+            plotShadow: true
+        };
+
+        var columnChart = {
+            type: 'column',
+            options3d: {
+                enabled: true,
+                alpha: 45,
+                beta: 0,
+                depth: 100,
+                viewDistance: 25
+            }
+        };
+
+        var titleTemp = {
+            text: 'Temperature Data from Pi'
+        };
+
+        var subtitleTemp = {
+            text: 'Measured in Celcius - °C'
+        };
+
+        var titleHum = {
+            text: 'Humidity Data from Pi'
+        };
+
+        var subtitleHum = {
+            text: 'Measured in Percentage - %'
+        };
+
+        var titleButton = {
+            text: 'Button Pressed Boolean'
+        };
+
+        var xAxis = {
+            type: 'datetime',
+            tickPixelInterval: 150
+        };
+
+        var yAxis = {
+            title: {
+                text: 'Value'
+            },
+            plotLines: [{
+                value: 0,
+                width: 1,
+                color: '#808080'
+            }]
+        };
+        var tooltip = {
+            formatter: function () {
+                return '<b>' + this.series.name + '</b><br/>' +
+                    Highcharts.dateFormat('%Y-%m-%d %H:%M:%S', this.x) + '<br/>' +
+                    Highcharts.numberFormat(this.y, 2);
+            }
+        };
+
+        var buttonTooltip = {
+            pointFormat: '{point.percentage:.1f}%'
+        };
+
+        var splinePlotOptions = {
+            area: {
+                pointStart: 1940,
+                marker: {
+                    enabled: false,
+                    symbol: 'circle',
+                    radius: 2,
+                    states: {
+                        hover: {
+                            enabled: true
+                        }
+                    }
+                }
+            }
+        };
+
+        var piePlotOptions = {
+            pie: {
+                allowPointSelect: true,
+                cursor: 'pointer',
+                dataLabels: {
+                    enabled: true,
+                    format: '<b>{point.name}</b>: {point.percentage:.1f} %',
+                    style: {
+                        color: (Highcharts.theme && Highcharts.theme.contrastTextColor) || 'black'
+                    }
+                },
+                showInLegend: true
+            }
+        };
+
+        var columnPlotOptions = {
+            column: {
+              depth: 25
+            }
+        };
+
+        var legend = {
+            enabled: true
+        };
+        var exporting = {
+            enabled: false
+        };
+
+
+        var seriesTemp = [];
+        var seriesHum = [];
+        var seriesButton = [];
+
+        dweetio.get_all_dweets_for(name, function (err, dweets) {
+            /*
+                If there are values stored in localStorage then it will push all values to their respective array maxing at length of 100
+                If there is no local storage, it reverts back to the last 5 dweets
+             */
+            if(localStorage.getItem("tempValue") !== null || localStorage.getItem("humValue") !== null || localStorage.getItem("buttonValueTrue") !== null || localStorage.getItem("buttonValueFalse") !== null) {
+                for (var i = 0; i < JSON.parse(localStorage.getItem("tempValue")).length; i++) {
+                    //Retrieves every possible value from localStorage
+                    dataTemp.push(JSON.parse(localStorage.getItem("tempValue"))[i]);
+                    dataHum.push(JSON.parse(localStorage.getItem("humValue"))[i]);
+
+                    array_for_temp.push(new Date(JSON.parse(localStorage.getItem('tempDate'))[i]));
+                    array_for_hum.push(new Date(JSON.parse(localStorage.getItem('humDate'))[i]));
+
+                    deviceVal = localStorage.getItem("deviceValue");
+                    trueValue = parseInt(localStorage.getItem("buttonValueTrue"));
+                    falseValue = parseInt(localStorage.getItem("buttonValueFalse"));
+                }
+            } else {
+                for (theDweet in dweets.reverse()) {
+                    var dweet = dweets[theDweet];
+
+                    tempVal = dweet.content["temperature"];
+                    humVal = dweet.content["humidity"];
+                    buttonVal = dweet.content["button-pressed"];
+                    deviceVal = JSON.stringify(dweet.content["device-config"]);
+
+                    dataTemp.push(tempVal);
+                    dataHum.push(humVal);
+
+                    array_for_temp.push(dweet.created);
+                    array_for_hum.push(dweet.created);
+
+                    if(parseInt(buttonVal) === 1){
+                        trueValue++;
+                    } else {
+                        falseValue++;
+                    }
+                }
+            }
+
+            // Will only plot the last 100 values
+            if(array_for_temp.length > 100){
+                dataTemp = dataTemp.slice(dataTemp.length - 100);
+                dataHum = dataHum.slice(dataHum.length - 100);
+            }
+
+            console.log(dataTemp);
+            console.log(dataHum);
+            console.log(deviceVal);
+            console.log(trueValue);
+            console.log(falseValue);
+
+            seriesTemp = [{
+                name: 'Temperature data',
+                data: dataTemp
+            }];
+
+            seriesHum = [{
+                name: 'Humidity data',
+                data: dataHum
+            }];
+
+            seriesButton = [{
+                name: 'Button Pressed',
+                colorByPoint: true,
+                data: [{
+                    name: 'Pressed',
+                    y: trueValue,
+                    sliced: true
+                }, {
+                    name: 'Not Pressed',
+                    y: falseValue,
+                    sliced: true
+                }]
+            }];
+
+            var jsonTemp = {};
+            jsonTemp.chart = splineChart;
+            jsonTemp.title = titleTemp;
+            jsonTemp.subtitle = subtitleTemp;
+            jsonTemp.tooltip = tooltip;
+            jsonTemp.xAxis = xAxis;
+            jsonTemp.yAxis = yAxis;
+            jsonTemp.legend = legend;
+            jsonTemp.exporting = exporting;
+            jsonTemp.series = seriesTemp;
+            jsonTemp.plotOptions = splinePlotOptions;
+
+            var jsonHum = {};
+            jsonHum.chart = columnChart;
+            jsonHum.title = titleHum;
+            jsonHum.subtitle = subtitleHum;
+            jsonHum.tooltip = tooltip;
+            jsonHum.xAxis = xAxis;
+            jsonHum.yAxis = yAxis;
+            jsonHum.legend = legend;
+            jsonHum.exporting = exporting;
+            jsonHum.series = seriesHum;
+            jsonHum.plotOptions = columnPlotOptions;
+
+            var jsonButtonPressed = {};
+            jsonButtonPressed.chart = pieChart;
+            jsonButtonPressed.title = titleButton;
+            jsonButtonPressed.tooltip = buttonTooltip;
+            jsonButtonPressed.series = seriesButton;
+            jsonButtonPressed.plotOptions = piePlotOptions;
+
+            Highcharts.setOptions({
+                global: {
+                    useUTC: false
+                }
+            });
+
+            $('#device').html("<h3>All sensor readings are coming from:<br/>IP: " + JSON.parse(deviceVal)[0] + "<br/>Mac-Address: " + JSON.parse(deviceVal)[1] + "<br/>Organisation: " + JSON.parse(deviceVal)[2] + "<br/>LatLng: " + JSON.parse(deviceVal)[3]);
+
+            $('#temperatureContainer').highcharts(jsonTemp);
+            tempChart = $('#temperatureContainer').highcharts();
+            tempChart.xAxis[0].update({categories: array_for_temp}, true);
+
+            $('#humidityContainer').highcharts(jsonHum);
+            humChart = $('#humidityContainer').highcharts();
+            humChart.xAxis[0].update({categories: array_for_hum}, true);
+
+            $('#buttonPressedContainer').highcharts(jsonButtonPressed);
+            buttonPressedChart = $('#buttonPressedContainer').highcharts();
+
+            function showValues() {
+                $('#alpha-value').html(humChart.options.chart.options3d.alpha);
+                $('#beta-value').html(humChart.options.chart.options3d.beta);
+                $('#depth-value').html(humChart.options.chart.options3d.depth);
+            }
+
+            $('#sliders input').on('input change', function () {
+                humChart.options.chart.options3d[this.id] = parseFloat(this.value);
+                showValues();
+                humChart.redraw(false);
+            });
+
+            showValues();
+        });
+
+        dweetio.listen_for(name, function (dweet) {
+            tempVal = dweet.content["temperature"];
+            humVal = dweet.content["humidity"];
+            buttonVal = dweet.content["button-pressed"];
+            deviceVal = JSON.stringify(dweet.content["device-config"]);
+
+            var temperatureChart = $('#temperatureContainer').highcharts();
+            var humidityChart = $('#humidityContainer').highcharts();
+            var buttonPressedChart = $('#buttonPressedContainer').highcharts();
+
+            $('#device').html("<h3>All sensor readings are coming from:<br/>IP: " + JSON.parse(deviceVal)[0] + "<br/>Mac-Address: " + JSON.parse(deviceVal)[1] + "<br/>Organisation: " + JSON.parse(deviceVal)[2]  + "<br/>LatLng: " + JSON.parse(deviceVal)[3]);
+
+            array_for_temp.push(dweet.created);
+            array_for_hum.push(dweet.created);
+
+            //Keeps graphs at 100 plotted points, no more
+            if (array_for_temp.length > 100) {
+                temperatureChart.series[0].data[0].remove();
+                humidityChart.series[0].data[0].remove();
+            }
+
+            // Will only plot values if they exist, so graph does not grow with date stamps but no values
+            if (tempVal) {
+                temperatureChart.series[0].addPoint(parseInt(tempVal));
+                tempChart.xAxis[0].update({categories: array_for_temp}, true);
+                appendToStorage('tempValue', parseInt(tempVal));
+                appendToStorage('tempDate', dweet.created);
+            }
+            if (humVal) {
+                humidityChart.series[0].addPoint(parseInt(humVal));
+                humChart.xAxis[0].update({categories: array_for_hum}, true);
+                appendToStorage('humValue', parseInt(humVal));
+                appendToStorage('humDate', dweet.created);
+            }
+            if (buttonVal) {
+                if(parseInt(buttonVal) === 1){
+                    trueValue++;
+                } else{
+                    falseValue++;
+                }
+                buttonPressedChart.series[0].setData([trueValue, falseValue], true);
+            }
+
+            // Overwrites device data each time in case of change
+            localStorage.setItem("buttonValueTrue", trueValue);
+            localStorage.setItem("buttonValueFalse", falseValue);
+            localStorage.setItem("deviceValue", deviceVal);
+
+            //Adds each dweet reading to localStorage
+            function appendToStorage(key, value){
+                var existingData = JSON.parse(localStorage.getItem(key)) || [];
+                existingData.push(value);
+                localStorage.setItem(key, JSON.stringify(existingData));
+            }
+        });
+    });
+</script>
+</body>
+</html>
